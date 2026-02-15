@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CheckCircle, XCircle, RefreshCw, Plus, X, Target, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, RefreshCw, Plus, X, Target, AlertCircle, AlertTriangle } from 'lucide-react';
 import './App.css';
 import useLocalStorage from './hooks/useLocalStorage';
 import { formatCurrency } from './utils/helpers';
@@ -40,6 +40,7 @@ export default function App() {
     // Notification tracking
     const notifiedBills = React.useRef(new Set());
     const [activeNotification, setActiveNotification] = useState(null);
+    const [budgetAlert, setBudgetAlert] = useState(null);
 
     // Forms
     const [expense, setExpense] = useState({ date: new Date().toISOString().split('T')[0], description: '', amount: '', type: 'debit', category: 'Other' });
@@ -128,8 +129,26 @@ export default function App() {
             id: Date.now()
         };
 
-        setTransactions(prev => [...prev, newTxn]);
-        showToast('Transaction added!');
+        const newTransactions = [...transactions, newTxn];
+        setTransactions(newTransactions);
+
+        let budgetMsg = '';
+        const budget = budgets.find(b => b.category === expense.category);
+        if (budget) {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            const spent = newTransactions
+                .filter(t => t.type === 'debit' && t.category === expense.category && t.date.startsWith(currentMonth))
+                .reduce((s, t) => s + Math.abs(t.amount), 0);
+            const remaining = budget.limit - spent;
+
+            setBudgetAlert({
+                category: expense.category,
+                remaining,
+                isOver: remaining < 0
+            });
+        }
+
+        showToast(`Transaction added!`);
         setShowExpense(false);
         setExpense({ date: new Date().toISOString().split('T')[0], description: '', amount: '', type: 'debit', category: 'Other' });
     };
@@ -169,9 +188,26 @@ export default function App() {
             category: 'Bills',
             isRecurring: false
         };
-        setTransactions(prev => [...prev, newTransaction]);
+        const updatedTransactions = [...transactions, newTransaction];
+        setTransactions(updatedTransactions);
         setBills(prev => prev.map(b => b.id === bill.id ? { ...b, paid: true } : b));
-        showToast(`Paid ${bill.name} successfully!`, 'success');
+
+        const budget = budgets.find(b => b.category === 'Bills');
+        if (budget) {
+            const currentMonth = new Date().toISOString().slice(0, 7);
+            const spent = updatedTransactions
+                .filter(t => t.type === 'debit' && t.category === 'Bills' && t.date.startsWith(currentMonth))
+                .reduce((s, t) => s + Math.abs(t.amount), 0);
+            const remaining = budget.limit - spent;
+
+            setBudgetAlert({
+                category: 'Bills',
+                remaining,
+                isOver: remaining < 0
+            });
+        }
+
+        showToast(`Paid ${bill.name} successfully!`);
     };
 
     // AI API call helper
@@ -299,6 +335,39 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
                     setShowSettings(false);
                 }}
             />
+
+            {/* Budget Alert Modal */}
+            {budgetAlert && (
+                <div className="modal" style={{ zIndex: 12000 }}>
+                    <div className="modal-content notification-modal">
+                        <div className="icon-wrapper" style={{ background: '#fee2e2' }}>
+                            <AlertTriangle size={48} color="#ef4444" />
+                        </div>
+                        <h2 style={{ color: 'var(--danger)' }}>Budget Alert!</h2>
+                        <p style={{ fontSize: '18px', fontWeight: '500' }}>
+                            <strong>{budgetAlert.category}</strong> status:
+                        </p>
+                        <p style={{ fontSize: '16px' }}>
+                            {budgetAlert.isOver ? (
+                                <span style={{ color: 'var(--danger)', fontWeight: '700' }}>
+                                    EXCEEDED by {formatCurrency(Math.abs(budgetAlert.remaining))}!
+                                </span>
+                            ) : (
+                                <span style={{ color: 'var(--success)', fontWeight: '700' }}>
+                                    {formatCurrency(budgetAlert.remaining)} left in budget.
+                                </span>
+                            )}
+                        </p>
+                        <button
+                            className="btn-primary"
+                            style={{ width: '100%', marginTop: '16px', background: 'var(--danger)' }}
+                            onClick={() => setBudgetAlert(null)}
+                        >
+                            OK
+                        </button>
+                    </div>
+                </div>
+            )}
 
             {/* Bill Notification Modal */}
             {activeNotification && (

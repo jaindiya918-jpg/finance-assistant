@@ -72,8 +72,17 @@ const BudgetManager = ({ budgets, setBudgets, transactions }) => {
                             </div>
 
                             <div className="flex-between" style={{ marginTop: '12px' }}>
-                                <span className="small">{percentage.toFixed(0)}% used</span>
-                                {isOver && <span style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 'bold' }}><AlertTriangle size={12} /> Over Budget!</span>}
+                                <div className="space-y-xs">
+                                    <div className="small">{percentage.toFixed(0)}% used</div>
+                                    <div style={{
+                                        fontWeight: '700',
+                                        color: isOver ? 'var(--danger)' : 'var(--success)',
+                                        fontSize: '14px'
+                                    }}>
+                                        {isOver ? 'Over by ' : ''}{formatCurrency(Math.abs(budget.limit - spent))} {isOver ? '' : 'left'}
+                                    </div>
+                                </div>
+                                {isOver && <span style={{ color: 'var(--danger)', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: 'bold' }}><AlertTriangle size={12} /> Limit Exceeded</span>}
                             </div>
                         </div>
                     );
