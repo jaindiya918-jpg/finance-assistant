@@ -120,6 +120,16 @@ export default function App() {
         const amount = parseFloat(cleanedAmount);
         if (isNaN(amount)) return showToast('Invalid amount', 'error');
 
+        // Calculate current balance
+        const currentIncome = transactions.filter(t => t.type?.toLowerCase() === 'credit' || t.type?.toLowerCase() === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+        const currentExpense = transactions.filter(t => t.type?.toLowerCase() === 'debit' || t.type?.toLowerCase() === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+        const currentBalance = currentIncome - currentExpense;
+
+        // Check if sufficient balance for debit transactions
+        if (expense.type === 'debit' && amount > currentBalance) {
+            return showToast(`Insufficient funds! Balance: ${formatCurrency(currentBalance)}`, 'error');
+        }
+
         const newTxn = {
             ...expense,
             amount: expense.type === 'credit' ? Math.abs(amount) : -Math.abs(amount),
