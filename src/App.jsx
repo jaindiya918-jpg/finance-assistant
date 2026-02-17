@@ -322,13 +322,14 @@ export default function App() {
 Income: ₹${income}
 Expenses: ₹${totalExpense}
 Savings: ${((income - totalExpense) / income * 100).toFixed(1)}%
+User Location: ${userLocation || 'Unknown (Ask user if high rent/food detected)'}
 
 Categories:
 ${Object.entries(categorySpending).map(([c, a]) => `${c}: ₹${a}`).join('\n')}
 
 For categories where spending is high (like Rent, Food, or Shopping), suggest specific cheaper alternatives or actionable savings tips.
 If Rent is high, mention typical lower-rent areas or housing alternatives based on general market knowledge.
-If Food is high, suggest grocery apps or meal planning tips.
+If Food is high, suggest specific affordable restaurants or messes nearby.
 
 Return JSON with: {
     "personality": "Saver/Spender/Balanced", 
@@ -339,13 +340,23 @@ Return JSON with: {
     "savingsPotential": 5000, 
     "healthScore": 75,
     "rentHigh": boolean,  // true if rent > 30% of income
-    "needsLocation": boolean // true if rentHigh is true and userLocation is missing
+    "foodHigh": boolean, // true if Food > 20% of income
+    "needsLocation": boolean, // true if (rentHigh or foodHigh) and userLocation is missing
+    "housingRecommendations": [{"area": "Area Name", "price": "₹10k-15k", "notes": "Commute/Vibe details", "mapsQuery": "rent 1bhk in Area Name, ${userLocation || 'City'}"}],
+    "diningRecommendations": [{"name": "Place Name", "cuisine": "Type", "price": "₹200/person", "mapsQuery": "Place Name, ${userLocation || 'City'}"}]
 }`;
 
         try {
             const responseText = await callAI(prompt);
             let result = JSON.parse(responseText.match(/\{[\s\S]*\}/)[0]);
-            result = { ...result, income, expense: totalExpense, savingsRate: ((income - totalExpense) / income * 100).toFixed(1), categorySpending, needsLocation: result.rentHigh && !userLocation };
+            result = {
+                ...result,
+                income,
+                expense: totalExpense,
+                savingsRate: ((income - totalExpense) / income * 100).toFixed(1),
+                categorySpending,
+                needsLocation: (result.rentHigh || result.foodHigh) && !userLocation
+            };
 
             setAnalysis(result);
             showToast('Analysis complete!');
@@ -420,7 +431,7 @@ Return JSON with: {
         User Location: ${userLocation || 'Unknown'}.
         Question: ${msg}
         
-        If the user asks for rental recommendations and location is known, suggest specific nearby areas with lower rent based on your knowledge of the location.`;
+        If the user asks for rental recommendations and location is known, provide a structured list of 3-5 nearby neighborhoods with specific rent ranges (e.g., "₹10k-15k for 1BHK") and commute notes. Do not give generic advice.`;
 
         try {
             const reply = await callAI(context, true);
@@ -500,7 +511,6 @@ If the user wants to add these, I will use this data.`;
             <SettingsModal
                 show={showSettings}
                 onClose={() => setShowSettings(false)}
-                apiProvider={apiProvider}
                 setApiProvider={setApiProvider}
                 apiKey={apiKey}
                 setApiKey={setApiKey}

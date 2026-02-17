@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, RefreshCw, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
+import { Sparkles, RefreshCw, AlertTriangle, CheckCircle, TrendingUp, TrendingDown, DollarSign, Utensils } from 'lucide-react';
 import { formatCurrency } from '../../utils/helpers';
 
 const Analysis = ({ analysis, transactions, runAnalysis, isLoading }) => {
@@ -110,6 +110,66 @@ const Analysis = ({ analysis, transactions, runAnalysis, isLoading }) => {
                                             Save {alt.estimatedSavings}
                                         </div>
                                     </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {analysis.housingRecommendations && analysis.housingRecommendations.length > 0 && (
+                        <div className="card" style={{ borderLeft: '4px solid #8b5cf6' }}>
+                            <h3><Sparkles style={{ color: '#8b5cf6' }} /> Housing Recommendations</h3>
+                            <p className="small" style={{ marginBottom: '12px' }}>Tap for details, occupancy & directions</p>
+                            <div className="txn-list">
+                                {analysis.housingRecommendations.map((house, i) => (
+                                    <a
+                                        key={i}
+                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(house.mapsQuery || house.area)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="txn-item hover-card"
+                                        style={{ background: 'rgba(139, 92, 246, 0.05)', textDecoration: 'none', color: 'inherit', cursor: 'pointer', display: 'flex' }}
+                                    >
+                                        <div className="txn-icon" style={{ background: '#8b5cf6' }}>
+                                            <DollarSign color="white" />
+                                        </div>
+                                        <div className="txn-details">
+                                            <div className="txn-desc">{house.area}</div>
+                                            <div className="txn-meta">{house.notes}</div>
+                                        </div>
+                                        <div className="txn-amount-credit">
+                                            {house.price || house.rentRange}
+                                        </div>
+                                    </a>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {analysis.diningRecommendations && analysis.diningRecommendations.length > 0 && (
+                        <div className="card" style={{ borderLeft: '4px solid #F59E0B' }}>
+                            <h3><Utensils style={{ color: '#F59E0B' }} /> Dining Recommendations</h3>
+                            <p className="small" style={{ marginBottom: '12px' }}>Tap for menu, ratings & location</p>
+                            <div className="txn-list">
+                                {analysis.diningRecommendations.map((place, i) => (
+                                    <a
+                                        key={i}
+                                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.mapsQuery || place.name)}`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="txn-item hover-card"
+                                        style={{ background: 'rgba(245, 158, 11, 0.05)', textDecoration: 'none', color: 'inherit', cursor: 'pointer', display: 'flex' }}
+                                    >
+                                        <div className="txn-icon" style={{ background: '#F59E0B' }}>
+                                            <Utensils color="white" />
+                                        </div>
+                                        <div className="txn-details">
+                                            <div className="txn-desc">{place.name}</div>
+                                            <div className="txn-meta">{place.cuisine} • {place.notes || 'Good ratings'}</div>
+                                        </div>
+                                        <div className="txn-amount-credit">
+                                            {place.price || place.priceRange}
+                                        </div>
+                                    </a>
                                 ))}
                             </div>
                         </div>

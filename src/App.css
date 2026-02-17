@@ -905,3 +905,5 @@ ul li::before {
     max-width: 85%;
   }
 }
+.hover-card { transition: all 0.2s ease; border: 1px solid transparent; }
+.hover-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.05); border-color: rgba(0,0,0,0.1); background: white !important; }
