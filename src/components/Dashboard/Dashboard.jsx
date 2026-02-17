@@ -1,5 +1,5 @@
 import React from 'react';
-import { TrendingUp, TrendingDown, DollarSign, Sparkles, RefreshCw, Target, Plus, FileText, CreditCard } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, Sparkles, RefreshCw, Target, Plus, FileText, CreditCard, Trash2, EyeOff } from 'lucide-react';
 import { formatCurrency, categoryIcons, categoryColors } from '../../utils/helpers';
 
 const Dashboard = ({
@@ -12,14 +12,18 @@ const Dashboard = ({
     setView,
     onAddGoal,
     budgets = [],
-    bills = []
+    bills = [],
+    onDeleteTransaction,
+    onToggleHide
 }) => {
     // Budget Calculations
     const currentMonth = new Date().toISOString().slice(0, 7);
+    const visibleTransactions = transactions.filter(t => !t.hidden);
+
     const spending = transactions
-        .filter(t => t.type === 'debit' && t.date.startsWith(currentMonth))
+        .filter(t => (t.type?.toLowerCase() === 'debit' || t.type?.toLowerCase() === 'expense') && t.date.startsWith(currentMonth))
         .reduce((acc, t) => {
-            acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount);
+            acc[t.category] = (acc[t.category] || 0) + Math.abs(Number(t.amount));
             return acc;
         }, {});
 
@@ -167,14 +171,14 @@ const Dashboard = ({
                 </div>
             </div>
 
-            {transactions.length > 0 && (
+            {visibleTransactions.length > 0 && (
                 <div className="card">
                     <div className="flex-between">
                         <h3><FileText /> Recent Transactions</h3>
                         <button onClick={() => setView('transactions')} className="btn-link">View All →</button>
                     </div>
                     <div className="txn-list">
-                        {transactions.slice(-5).reverse().map((t, i) => {
+                        {visibleTransactions.slice(-5).reverse().map((t, i) => {
                             const Icon = categoryIcons[t.category] || CreditCard;
                             return (
                                 <div key={i} className="txn-item">
@@ -185,8 +189,12 @@ const Dashboard = ({
                                         <div className="txn-desc">{t.description}</div>
                                         <div className="txn-meta">{t.date} • {t.category}</div>
                                     </div>
-                                    <div className={t.type === 'credit' ? 'txn-amount-credit' : 'txn-amount-debit'}>
-                                        {t.type === 'credit' ? '+' : '-'}{formatCurrency(Math.abs(t.amount))}
+                                    <div className="flex gap" style={{ marginLeft: 'auto', marginRight: '12px' }}>
+                                        <button onClick={() => onToggleHide(t.id)} className="btn-icon" title="Hide"><EyeOff size={14} /></button>
+                                        <button onClick={() => onDeleteTransaction(t.id)} className="btn-icon text-danger" title="Delete"><Trash2 size={14} /></button>
+                                    </div>
+                                    <div className={(t.type?.toLowerCase() === 'credit' || t.type?.toLowerCase() === 'income') ? 'txn-amount-credit' : 'txn-amount-debit'}>
+                                        {(t.type?.toLowerCase() === 'credit' || t.type?.toLowerCase() === 'income') ? '+' : '-'}{formatCurrency(Math.abs(t.amount))}
                                     </div>
                                 </div>
                             );

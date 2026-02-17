@@ -20,6 +20,31 @@ const Analysis = ({ analysis, transactions, runAnalysis, isLoading }) => {
                 </div>
             ) : (
                 <div className="space-y">
+                    {analysis.needsLocation && (
+                        <div className="card" style={{ border: '2px solid var(--warning)', background: 'rgba(245, 158, 11, 0.05)' }}>
+                            <div className="flex gap">
+                                <AlertTriangle className="icon-yellow" />
+                                <div>
+                                    <h3 style={{ margin: 0 }}>High Rent Detected!</h3>
+                                    <p>I can suggest cheaper places to stay, but I need your current location (City) first.</p>
+                                    <div className="flex gap" style={{ marginTop: '12px' }}>
+                                        <input
+                                            type="text"
+                                            placeholder="Enter your city (e.g., Bangalore, Mumbai)"
+                                            style={{ padding: '8px 12px', borderRadius: '8px', border: '1px solid var(--border)', flex: 1 }}
+                                            onKeyPress={e => {
+                                                if (e.key === 'Enter' && e.target.value) {
+                                                    // This will be handled in App.jsx as it updates the state
+                                                    window.dispatchEvent(new CustomEvent('set-location', { detail: e.target.value }));
+                                                    e.target.value = '';
+                                                }
+                                            }}
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                     <div className="stats-grid">
                         <div className="card">
                             <h4>Personality</h4>
@@ -67,6 +92,28 @@ const Analysis = ({ analysis, transactions, runAnalysis, isLoading }) => {
                             {analysis.recommendations?.map((r, i) => <li key={i}>{r}</li>)}
                         </ul>
                     </div>
+
+                    {analysis.alternatives && analysis.alternatives.length > 0 && (
+                        <div className="card" style={{ borderLeft: '4px solid var(--primary-solid)' }}>
+                            <h3><Sparkles style={{ color: 'var(--primary-solid)' }} /> Cheaper Alternatives</h3>
+                            <div className="txn-list">
+                                {analysis.alternatives.map((alt, i) => (
+                                    <div key={i} className="txn-item" style={{ background: 'rgba(102, 126, 234, 0.05)' }}>
+                                        <div className="txn-icon" style={{ background: 'var(--primary)' }}>
+                                            <TrendingDown color="white" />
+                                        </div>
+                                        <div className="txn-details">
+                                            <div className="txn-desc">{alt.suggestion}</div>
+                                            <div className="txn-meta">{alt.category} | Source: {alt.source}</div>
+                                        </div>
+                                        <div className="txn-amount-credit">
+                                            Save {alt.estimatedSavings}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     <button onClick={runAnalysis} disabled={isLoading} className="btn-secondary">
                         {isLoading ? <RefreshCw className="spinner-sm" /> : <RefreshCw />} Refresh Analysis

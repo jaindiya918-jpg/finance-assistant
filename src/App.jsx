@@ -37,6 +37,7 @@ export default function App() {
     const [chatHistory, setChatHistory] = useLocalStorage('chatHistory', []);
     const [apiKey, setApiKey] = useLocalStorage('apiKey', import.meta.env.VITE_GROQ_API_KEY || '');
     const [apiProvider, setApiProvider] = useLocalStorage('apiProvider', 'groq');
+    const [userLocation, setUserLocation] = useLocalStorage('userLocation', '');
 
     // Modals
     const [showExpense, setShowExpense] = useState(false);
@@ -82,16 +83,27 @@ export default function App() {
         checkBills();
     }, [bills, activeNotification]);
 
-    // Check for recurring transactions due today
+    // Check for recurring transactions due in the next 3 days
     useEffect(() => {
         if (!recurring.length || recurringAlert) return;
 
         const checkRecurring = () => {
-            const today = new Date().toISOString().split('T')[0];
-            const dueItem = recurring.find(item => item.nextDueDate <= today && !notifiedRecurring.current.has(item.id));
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            const dueItem = recurring.find(item => {
+                const dueDate = new Date(item.nextDueDate);
+                const diffTime = dueDate - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                return diffDays <= 3 && !notifiedRecurring.current.has(item.id);
+            });
 
             if (dueItem) {
-                setRecurringAlert(dueItem);
+                const dueDate = new Date(dueItem.nextDueDate);
+                const diffTime = dueDate - today;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                setRecurringAlert({ ...dueItem, daysLeft: diffDays });
                 notifiedRecurring.current.add(dueItem.id);
             }
         };
@@ -104,34 +116,52 @@ export default function App() {
         e.preventDefault();
         if (!expense.description || !expense.amount) return showToast('Fill all fields', 'error');
 
+        const cleanedAmount = String(expense.amount).replace(/[^0-9.-]/g, '');
+        const amount = parseFloat(cleanedAmount);
+        if (isNaN(amount)) return showToast('Invalid amount', 'error');
+
         const newTxn = {
             ...expense,
-            amount: expense.type === 'credit' ? parseFloat(expense.amount) : -parseFloat(expense.amount),
+            amount: expense.type === 'credit' ? Math.abs(amount) : -Math.abs(amount),
             id: Date.now()
         };
 
-        const newTransactions = [...transactions, newTxn];
-        setTransactions(newTransactions);
+        setTransactions(prev => {
+            const newTransactions = [...prev, newTxn];
 
-        let budgetMsg = '';
-        const budget = budgets.find(b => b.category === expense.category);
-        if (budget) {
-            const currentMonth = new Date().toISOString().slice(0, 7);
-            const spent = newTransactions
-                .filter(t => t.type === 'debit' && t.category === expense.category && t.date.startsWith(currentMonth))
-                .reduce((s, t) => s + Math.abs(t.amount), 0);
-            const remaining = budget.limit - spent;
+            // Budget notification logic moved here to use latest transactions
+            const budget = budgets.find(b => b.category === expense.category);
+            if (budget) {
+                const currentMonth = new Date().toISOString().slice(0, 7);
+                const spent = newTransactions
+                    .filter(t => (t.type === 'debit' || t.type === 'expense') && t.category === expense.category && t.date.startsWith(currentMonth))
+                    .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                const remaining = budget.limit - spent;
 
-            setBudgetAlert({
-                category: expense.category,
-                remaining,
-                isOver: remaining < 0
-            });
-        }
+                setBudgetAlert({
+                    category: expense.category,
+                    remaining,
+                    isOver: remaining < 0
+                });
+            }
+            return newTransactions;
+        });
 
         showToast(`Transaction added!`);
         setShowExpense(false);
         setExpense({ date: new Date().toISOString().split('T')[0], description: '', amount: '', type: 'debit', category: 'Other' });
+    };
+
+    // Delete transaction
+    const deleteTransaction = (id) => {
+        if (!window.confirm('Are you sure you want to delete this transaction?')) return;
+        setTransactions(prev => prev.filter(t => t.id !== id));
+        showToast('Transaction deleted');
+    };
+
+    // Toggle hide transaction
+    const toggleHideTransaction = (id) => {
+        setTransactions(prev => prev.map(t => t.id === id ? { ...t, hidden: !t.hidden } : t));
     };
 
     // Add goal
@@ -164,30 +194,32 @@ export default function App() {
             id: Date.now(),
             date: new Date().toISOString().split('T')[0],
             description: `Bill Payment: ${bill.name}`,
-            amount: -Math.abs(bill.amount),
+            amount: -Math.abs(Number(bill.amount)),
             type: 'debit',
             category: 'Bills',
             isRecurring: false
         };
-        const updatedTransactions = [...transactions, newTransaction];
-        setTransactions(updatedTransactions);
+
+        setTransactions(prev => {
+            const updatedTransactions = [...prev, newTransaction];
+            const budget = budgets.find(b => b.category === 'Bills');
+            if (budget) {
+                const currentMonth = new Date().toISOString().slice(0, 7);
+                const spent = updatedTransactions
+                    .filter(t => (t.type === 'debit' || t.type === 'expense') && t.category === 'Bills' && t.date.startsWith(currentMonth))
+                    .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+                const remaining = budget.limit - spent;
+
+                setBudgetAlert({
+                    category: 'Bills',
+                    remaining,
+                    isOver: remaining < 0
+                });
+            }
+            return updatedTransactions;
+        });
+
         setBills(prev => prev.map(b => b.id === bill.id ? { ...b, paid: true } : b));
-
-        const budget = budgets.find(b => b.category === 'Bills');
-        if (budget) {
-            const currentMonth = new Date().toISOString().slice(0, 7);
-            const spent = updatedTransactions
-                .filter(t => t.type === 'debit' && t.category === 'Bills' && t.date.startsWith(currentMonth))
-                .reduce((s, t) => s + Math.abs(t.amount), 0);
-            const remaining = budget.limit - spent;
-
-            setBudgetAlert({
-                category: 'Bills',
-                remaining,
-                isOver: remaining < 0
-            });
-        }
-
         showToast(`Paid ${bill.name} successfully!`);
     };
 
@@ -221,7 +253,7 @@ export default function App() {
             const currentMonth = new Date().toISOString().slice(0, 7);
             const spent = updatedTransactions
                 .filter(t => t.type === 'debit' && t.category === item.category && t.date.startsWith(currentMonth))
-                .reduce((s, t) => s + Math.abs(t.amount), 0);
+                .reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
             const remaining = budget.limit - spent;
 
             setBudgetAlert({
@@ -279,11 +311,11 @@ export default function App() {
         }
 
         setShowAnalysisLoading(true);
-        const income = transactions.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
-        const totalExpense = Math.abs(transactions.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0));
+        const income = transactions.filter(t => t.type === 'credit').reduce((s, t) => s + Number(t.amount), 0);
+        const totalExpense = Math.abs(transactions.filter(t => t.type === 'debit').reduce((s, t) => s + Number(t.amount), 0));
         const categorySpending = {};
         transactions.filter(t => t.type === 'debit').forEach(t => {
-            categorySpending[t.category] = (categorySpending[t.category] || 0) + Math.abs(t.amount);
+            categorySpending[t.category] = (categorySpending[t.category] || 0) + Math.abs(Number(t.amount));
         });
 
         const prompt = `Analyze financial data and return ONLY valid JSON:
@@ -294,12 +326,26 @@ Savings: ${((income - totalExpense) / income * 100).toFixed(1)}%
 Categories:
 ${Object.entries(categorySpending).map(([c, a]) => `${c}: ₹${a}`).join('\n')}
 
-Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"category": "name", "amount": 1000, "insight": "text"}], "anomalies": ["text"], "recommendations": ["tip1", "tip2", "tip3"], "savingsPotential": 5000, "healthScore": 75}`;
+For categories where spending is high (like Rent, Food, or Shopping), suggest specific cheaper alternatives or actionable savings tips.
+If Rent is high, mention typical lower-rent areas or housing alternatives based on general market knowledge.
+If Food is high, suggest grocery apps or meal planning tips.
+
+Return JSON with: {
+    "personality": "Saver/Spender/Balanced", 
+    "topCategories": [{"category": "name", "amount": 1000, "insight": "text"}], 
+    "anomalies": ["text"], 
+    "recommendations": ["General tip"], 
+    "alternatives": [{"category": "name", "suggestion": "Try X instead of Y", "estimatedSavings": "₹1000", "source": "Google/Search"}],
+    "savingsPotential": 5000, 
+    "healthScore": 75,
+    "rentHigh": boolean,  // true if rent > 30% of income
+    "needsLocation": boolean // true if rentHigh is true and userLocation is missing
+}`;
 
         try {
             const responseText = await callAI(prompt);
             let result = JSON.parse(responseText.match(/\{[\s\S]*\}/)[0]);
-            result = { ...result, income, expense: totalExpense, savingsRate: ((income - totalExpense) / income * 100).toFixed(1), categorySpending };
+            result = { ...result, income, expense: totalExpense, savingsRate: ((income - totalExpense) / income * 100).toFixed(1), categorySpending, needsLocation: result.rentHigh && !userLocation };
 
             setAnalysis(result);
             showToast('Analysis complete!');
@@ -310,6 +356,22 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
             setShowAnalysisLoading(false);
         }
     };
+
+    // Event listener for location updates from Analysis component
+    useEffect(() => {
+        const handleSetLocation = (e) => {
+            const loc = e.detail;
+            setUserLocation(loc);
+            showToast(`Location set to ${loc}!`);
+
+            // If analysis was waiting for location, refresh it
+            if (analysis?.needsLocation) {
+                runAnalysis();
+            }
+        };
+        window.addEventListener('set-location', handleSetLocation);
+        return () => window.removeEventListener('set-location', handleSetLocation);
+    }, [analysis, setUserLocation, runAnalysis]);
 
     // Chat
     const sendChat = async (msg) => {
@@ -322,7 +384,43 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
         setChatHistory(newHistory);
         setChatLoading(true);
 
-        const context = `Financial context: ${transactions.length} transactions, ${goals.length} goals${analysis ? `, ${analysis.personality} personality, ₹${analysis.income} income, ₹${analysis.expense} expenses, ${analysis.savingsRate}% savings` : ''}. Question: ${msg}`;
+        // Check if user is providing location
+        const locationMatch = msg.match(/(?:my location is|i am in|i live in|at)\s+([a-zA-Z\s]+)/i);
+        if (locationMatch && !userLocation) {
+            setUserLocation(locationMatch[1].trim());
+        }
+
+        // Check for pending transactions logic...
+        const lastAssistantMsg = chatHistory[chatHistory.length - 1];
+        const hasPending = lastAssistantMsg?.role === 'assistant' && lastAssistantMsg.pendingTransactions?.length > 0;
+        const isConfirming = msg.toLowerCase().match(/yes|add|confirm|do it|ok|okay/);
+
+        if (hasPending && isConfirming) {
+            const pendingTxns = lastAssistantMsg.pendingTransactions.map(t => {
+                const cleanedAmount = String(t.amount).replace(/[^0-9.-]/g, '');
+                const amt = parseFloat(cleanedAmount);
+                return {
+                    ...t,
+                    amount: t.type === 'credit' ? Math.abs(amt) : -Math.abs(amt),
+                    id: Date.now() + Math.random(),
+                    date: t.date || new Date().toISOString().split('T')[0]
+                };
+            });
+
+            setTransactions(prev => [...prev, ...pendingTxns]);
+            showToast(`Added ${pendingTxns.length} transactions!`);
+
+            const updated = [...newHistory, { role: 'assistant', content: `Great! I've added those ${pendingTxns.length} transactions to your records. You can see them in the Transactions tab.` }];
+            setChatHistory(updated);
+            setChatLoading(false);
+            return;
+        }
+
+        const context = `Financial context: ${transactions.length} transactions, ${goals.length} goals${analysis ? `, ${analysis.personality} personality, ₹${analysis.income} income, ₹${analysis.expense} expenses, ${analysis.savingsRate}% savings` : ''}. 
+        User Location: ${userLocation || 'Unknown'}.
+        Question: ${msg}
+        
+        If the user asks for rental recommendations and location is known, suggest specific nearby areas with lower rent based on your knowledge of the location.`;
 
         try {
             const reply = await callAI(context, true);
@@ -335,9 +433,62 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
         }
     };
 
+    const handleUploadCSV = async (data, fileName) => {
+        if (!apiKey) {
+            showToast('Set API key in settings', 'error');
+            return setShowSettings(true);
+        }
+
+        if (!data || data.length === 0) {
+            showToast('CSV file is empty or invalid', 'error');
+            return;
+        }
+
+        const newHistory = [...chatHistory, { role: 'user', content: `Uploaded CSV: ${fileName}` }];
+        setChatHistory(newHistory);
+        setChatLoading(true);
+
+        // Take first 20 rows to avoid context limits
+        const sampleData = data.slice(0, 20);
+        const csvString = JSON.stringify(sampleData);
+
+        const prompt = `I have uploaded a CSV file named "${fileName}". Here is a sample of the data (first 20 rows):
+${csvString}
+
+Please analyze this data and return a JSON response with two parts:
+1. "summary": A brief text summary of what you found (total transactions, date range, etc.).
+2. "transactions": A list of transaction objects mapping the CSV columns to our app's format: {"date": "YYYY-MM-DD", "description": "text", "amount": number, "type": "debit"|"credit", "category": "category_name"}.
+
+Available categories: Food & Dining, Shopping, Transportation, Entertainment, Utilities, Healthcare, Travel, Education, Rent, Investment, Salary, Other.
+
+Format the response as: 
+SUMMARY: [your text summary]
+DATA: [JSON array of transactions]
+
+If the user wants to add these, I will use this data.`;
+
+        try {
+            const reply = await callAI(prompt, true);
+
+            // Extract summary and data
+            const summaryMatch = reply.match(/SUMMARY:\s*([\s\S]*?)(?=DATA:|$)/i);
+            const dataMatch = reply.match(/DATA:\s*(\[[\s\S]*\])/i);
+
+            const summary = summaryMatch ? summaryMatch[1].trim() : "I've analyzed the CSV.";
+            const assistantMsg = `${summary}\n\nShould I add these transactions to your records?`;
+
+            setChatHistory([...newHistory, { role: 'assistant', content: assistantMsg, pendingTransactions: dataMatch ? JSON.parse(dataMatch[1]) : [] }]);
+        } catch (err) {
+            console.error('CSV AI Error:', err);
+            setChatHistory([...newHistory, { role: 'assistant', content: 'Error analyzing CSV. Please check formatting.' }]);
+        } finally {
+            setChatLoading(false);
+        }
+    };
+
     const stats = {
-        income: transactions.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0),
-        expense: Math.abs(transactions.filter(t => t.type === 'debit').reduce((s, t) => s + t.amount, 0))
+        income: transactions.filter(t => t.type?.toLowerCase() === 'credit' || t.type?.toLowerCase() === 'income').reduce((s, t) => s + Math.abs(Number(t.amount)), 0),
+        expense: transactions.filter(t => t.type?.toLowerCase() === 'debit' || t.type?.toLowerCase() === 'expense').reduce((s, t) => s + Math.abs(Number(t.amount)), 0)
     };
     stats.balance = stats.income - stats.expense;
     stats.savingsRate = stats.income > 0 ? ((stats.balance / stats.income) * 100).toFixed(1) : 0;
@@ -399,9 +550,9 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
                         <div className="icon-wrapper" style={{ background: '#fee2e2' }}>
                             <RefreshCw size={48} color="#ef4444" />
                         </div>
-                        <h2 style={{ color: 'var(--danger)' }}>Subscription Due!</h2>
+                        <h2 style={{ color: 'var(--danger)' }}>Subscription Reminder!</h2>
                         <p>
-                            <strong>{recurringAlert.description}</strong> is due today ({formatCurrency(recurringAlert.amount)}).
+                            <strong>{recurringAlert.description}</strong> is due {recurringAlert.daysLeft <= 0 ? 'today' : (recurringAlert.daysLeft === 1 ? 'tomorrow' : `in ${recurringAlert.daysLeft} days`)} ({formatCurrency(recurringAlert.amount)}).
                         </p>
                         <div className="notification-actions">
                             <button
@@ -537,6 +688,8 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
                     onAddGoal={() => setShowGoal(true)}
                     budgets={budgets}
                     bills={bills}
+                    onDeleteTransaction={deleteTransaction}
+                    onToggleHide={toggleHideTransaction}
                 />
             )}
 
@@ -544,6 +697,8 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
                 <TransactionList
                     transactions={transactions}
                     onAddTransaction={() => setShowExpense(true)}
+                    onDeleteTransaction={deleteTransaction}
+                    onToggleHide={toggleHideTransaction}
                 />
             )}
 
@@ -592,7 +747,10 @@ Return JSON with: {"personality": "Saver/Spender/Balanced", "topCategories": [{"
                 <ChatAssistant
                     chatHistory={chatHistory}
                     onSendChat={sendChat}
+                    onUploadCSV={handleUploadCSV}
                     isLoading={chatLoading}
+                    userLocation={userLocation}
+                    setUserLocation={setUserLocation}
                 />
             )}
         </Layout>

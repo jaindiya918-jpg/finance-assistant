@@ -9,9 +9,9 @@ const BudgetManager = ({ budgets, setBudgets, transactions }) => {
     // Calculate spending per category
     const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
     const spending = transactions
-        .filter(t => t.type === 'debit' && t.date.startsWith(currentMonth))
+        .filter(t => (t.type?.toLowerCase() === 'debit' || t.type?.toLowerCase() === 'expense') && t.date.startsWith(currentMonth))
         .reduce((acc, t) => {
-            acc[t.category] = (acc[t.category] || 0) + Math.abs(t.amount);
+            acc[t.category] = (acc[t.category] || 0) + Math.abs(Number(t.amount));
             return acc;
         }, {});
 
